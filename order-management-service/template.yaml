@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for Order Management Microservice with API Gateway and Load Balancer
+
+Resources:
+  AppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: order-management-app-bucket  # Change to a unique bucket name
+      AccessControl: Private
+
+  ElasticBeanstalkApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: OrderManagementApp Description: Elastic Beanstalk application for Order Management Microservice
+
+  ElasticBeanstalkEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      EnvironmentName: OrderManagementEnv
+      ApplicationName: !Ref ElasticBeanstalkApplication
+      SolutionStackName: 64bit Amazon Linux 2 v5.4.0 running Node.js 14  # Change to your desired stack
+      OptionSettings:
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: NODE_ENV
+          Value: production
+        - Namespace: aws:elasticbeanstalk:environment:proxy
+          OptionName: ProxyServer
+          Value: nginx
+
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: order-management-lb
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      Subnets: ["subnet-12345678", "subnet-87654321"]  # Replace with your subnet IDs
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and HTTPS traffic
+      VpcId: "vpc-12345678"  # Replace with your VPC ID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  AppLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: order-management-tg
+      Port: 80
+      Protocol: HTTP
+      VpcId: "vpc-12345678"  # Replace with your VPC ID
+      HealthCheckPath: "/health"  # Adjust based on your health check endpoint
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+
+Outputs:
+  S3BucketName:
+    Value: !Ref AppBucket
+    Description: The name of the S3 bucket for application versions
+
+  ElasticBeanstalkApplicationName:
+    Value: !Ref ElasticBeanstalkApplication
+    Description: The name of the Elastic Beanstalk application
+
+  ElasticBeanstalkEnvironmentName:
+    Value: !Ref ElasticBeanstalkEnvironment
+    Description: The name of the Elastic Beanstalk environment
+
+  LoadBalancerDNS:
+    Value: !GetAtt AppLoadBalancer.DNSName
+    Description: The DNS name of the load balancer
